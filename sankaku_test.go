@@ -2,12 +2,14 @@ package sankaku
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 )
 
 func TestRequest(t *testing.T) {
-	c, err := NewClient("https://chan.sankakucomplex.com", "en", nil)
+	sessionID := os.Getenv("SANKAKU_SESSION")
+	c, err := NewClient("https://chan.sankakucomplex.com", "en", sessionID, nil)
 	if err != nil {
 		t.Error(err)
 	}

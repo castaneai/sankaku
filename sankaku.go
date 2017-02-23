@@ -9,21 +9,23 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 )
 
 // Client ...
 type Client struct {
-	Host string
-	Lang string
+	Host      string
+	Lang      string
+	SessionID string
 
 	HTTPClient *http.Client
 	Logger     *log.Logger
 }
 
 // NewClient creates new client for sankaku
-func NewClient(host, lang string, logger *log.Logger) (*Client, error) {
+func NewClient(host, lang, sessionID string, logger *log.Logger) (*Client, error) {
 	if logger == nil {
 		logger = log.New(os.Stdout, "[sankaku]", log.Ltime)
 	}
@@ -31,12 +33,16 @@ func NewClient(host, lang string, logger *log.Logger) (*Client, error) {
 	return &Client{
 		Host:       host,
 		Lang:       lang,
+		SessionID:  sessionID,
 		HTTPClient: &http.Client{},
 		Logger:     logger,
 	}, nil
 }
 
-const userAgent = "Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 Safari/537.73"
+const (
+	userAgent         = "Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 Safari/537.73"
+	sessionCookieName = "_sankakucomplex_session"
+)
 
 func (c *Client) newRequest(ctx context.Context, method, spath string, body io.Reader) (*http.Request, error) {
 	c.Logger.Printf("c.Host: %s", c.Host)
@@ -51,6 +57,10 @@ func (c *Client) newRequest(ctx context.Context, method, spath string, body io.R
 
 	req = req.WithContext(ctx)
 	req.Header.Set("User-Agent", userAgent)
+
+	expires := time.Now().AddDate(1, 0, 0)
+	cookie := http.Cookie{Name: sessionCookieName, Value: c.SessionID, Expires: expires, HttpOnly: true}
+	req.AddCookie(&cookie)
 
 	return req, nil
 }
