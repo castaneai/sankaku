@@ -104,3 +104,31 @@ func (c *Client) SearchPosts(ctx context.Context, keyword string, page int) ([]P
 	})
 	return posts, nil
 }
+
+type PostDetail struct {
+	PostID string
+	ResizedURL string
+	OriginalURL string
+	SourceURL string
+}
+
+func (c *Client) FetchPostDetail(ctx context.Context, postID string) (*PostDetail, error) {
+	spath := fmt.Sprintf("/post/show/%s", postID)
+	doc, err := c.getGoQueryDoc(ctx, spath)
+	if err != nil {
+		return nil, err
+	}
+
+	detail := &PostDetail{}
+	doc.Find("#stats li").Each(func(i int, s *goquery.Selection) {
+		if strings.HasPrefix(s.Text(), "Resized") {
+			detail.ResizedURL = s.Find("a").AttrOr("href", "")
+		} else if strings.HasPrefix(s.Text(), "Original") {
+			detail.OriginalURL = s.Find("a").AttrOr("href", "")
+		} else if strings.HasPrefix(s.Text(), "Source") {
+			detail.SourceURL = s.Find("a").AttrOr("href", "")
+		}
+	})
+
+	return detail, nil
+}
