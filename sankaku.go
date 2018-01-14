@@ -138,11 +138,15 @@ func (c *Client) GetPostWithDetail(ctx context.Context, postID string) (*Post, *
 		}
 	})
 	// もうちょっといいとり方ないものか
-	detail.Hash = strings.Split(path.Base(detail.OriginalURL), ".")[0]
+	if detail.OriginalURL != "" {
+		detail.Hash = strings.Split(path.Base(detail.OriginalURL), ".")[0]
+	}
 
 	post := &Post{ID: postID}
 	post.Tags = strings.Split(doc.Find("post_tags").Text(), " ")
-	post.ThumbnailURL = getThumbnailURL(detail.Hash)
+	if detail.Hash != "" {
+		post.ThumbnailURL = getThumbnailURL(detail.Hash)
+	}
 
 	return post, detail, nil
 }
