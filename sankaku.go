@@ -26,7 +26,7 @@ type Client struct {
 }
 
 // NewClient creates new client for sankaku
-func NewClient(host, lang, sessionID string, logger *log.Logger) (*Client, error) {
+func NewClient(baseClient *http.Client, host, lang, sessionID string, logger *log.Logger) (*Client, error) {
 	if logger == nil {
 		logger = log.New(os.Stdout, "[sankaku]", log.Ltime)
 	}
@@ -35,7 +35,7 @@ func NewClient(host, lang, sessionID string, logger *log.Logger) (*Client, error
 		Host:       host,
 		Lang:       lang,
 		SessionID:  sessionID,
-		HTTPClient: &http.Client{},
+		HTTPClient: baseClient,
 		Logger:     logger,
 	}, nil
 }
