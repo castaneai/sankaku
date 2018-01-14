@@ -143,7 +143,12 @@ func (c *Client) GetPostWithDetail(ctx context.Context, postID string) (*Post, *
 	}
 
 	post := &Post{ID: postID}
-	post.Tags = strings.Split(doc.Find("post_tags").Text(), " ")
+	doc.Find("#tag-sidebar li > a").Each(func(i int, s *goquery.Selection) {
+		tag := strings.Replace(s.Text(), " ", "_", -1)
+		if tag != "" {
+			post.Tags = append(post.Tags, tag)
+		}
+	})
 	if detail.Hash != "" {
 		post.ThumbnailURL = getThumbnailURL(detail.Hash)
 	}
