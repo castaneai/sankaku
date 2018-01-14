@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"path"
 )
 
 // Client ...
@@ -42,6 +43,7 @@ func NewClient(host, lang, sessionID string, logger *log.Logger) (*Client, error
 const (
 	userAgent         = "Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 Safari/537.73"
 	sessionCookieName = "_sankakucomplex_session"
+	staticImageHost = "https://cs.sankakucomplex.com"
 )
 
 func (c *Client) newRequest(ctx context.Context, method, spath string, body io.Reader) (*http.Request, error) {
@@ -106,20 +108,26 @@ func (c *Client) SearchPosts(ctx context.Context, keyword string, page int) ([]P
 }
 
 type PostDetail struct {
-	PostID string
-	ResizedURL string
+	ID          string
+	Hash        string
+	ResizedURL  string
 	OriginalURL string
-	SourceURL string
+	SourceURL   string
 }
 
-func (c *Client) FetchPostDetail(ctx context.Context, postID string) (*PostDetail, error) {
+func getThumbnailURL(postHash string) (string) {
+	return fmt.Sprintf("%s/data/preview/%s/%s/%s.jpg", staticImageHost, postHash[0:2], postHash[2:4], postHash)
+}
+
+func (c *Client) GetPostWithDetail(ctx context.Context, postID string) (*Post, *PostDetail, error) {
 	spath := fmt.Sprintf("/post/show/%s", postID)
 	doc, err := c.getGoQueryDoc(ctx, spath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	detail := &PostDetail{}
+	// TODO: error handling
+	detail := &PostDetail{ID: postID}
 	doc.Find("#stats li").Each(func(i int, s *goquery.Selection) {
 		if strings.HasPrefix(s.Text(), "Resized") {
 			detail.ResizedURL = s.Find("a").AttrOr("href", "")
@@ -129,6 +137,12 @@ func (c *Client) FetchPostDetail(ctx context.Context, postID string) (*PostDetai
 			detail.SourceURL = s.Find("a").AttrOr("href", "")
 		}
 	})
+	// もうちょっといいとり方ないものか
+	detail.Hash = strings.Split(path.Base(detail.OriginalURL), ".")[0]
 
-	return detail, nil
+	post := &Post{ID: postID}
+	post.Tags = strings.Split(doc.Find("post_tags").Text(), " ")
+	post.ThumbnailURL = getThumbnailURL(detail.Hash)
+
+	return post, detail, nil
 }
