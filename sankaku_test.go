@@ -8,10 +8,15 @@ import (
 	"net/http"
 )
 
-func TestRequest(t *testing.T) {
+func newTestClient() (*Client, error) {
 	sessionID := os.Getenv("SANKAKU_SESSION")
+	opts := &Options{Host: "https://chan.sankakucomplex.com", Lang: "en", SessionID: sessionID}
 	hc := &http.Client{}
-	c, err := NewClient(hc,"https://chan.sankakucomplex.com", "en", sessionID, nil)
+	return NewClient(hc, opts, nil)
+}
+
+func TestRequest(t *testing.T) {
+	c, err := newTestClient()
 	if err != nil {
 		t.Error(err)
 	}
@@ -27,9 +32,7 @@ func TestRequest(t *testing.T) {
 }
 
 func TestGetPostWithDetail(t *testing.T) {
-	sessionID := os.Getenv("SANKAKU_SESSION")
-	hc := &http.Client{}
-	c, err := NewClient(hc,"https://chan.sankakucomplex.com", "en", sessionID, nil)
+	c, err := newTestClient()
 	if err != nil {
 		t.Error(err)
 	}
