@@ -3,36 +3,30 @@ package sankaku
 import (
 	"context"
 	"fmt"
+	"github.com/PuerkitoBio/goquery"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"os"
+	"path"
 	"strings"
 	"time"
-
-	"github.com/PuerkitoBio/goquery"
-	"path"
 )
 
 type Client struct {
-	c *http.Client
+	c    *http.Client
 	opts *Options
-	log *log.Logger
+	log  *log.Logger
 }
 
 type Options struct {
-	Host string
-	Lang string
+	Host      string
+	Lang      string
 	SessionID string
 }
 
 // NewClient creates new client for sankaku
 func NewClient(c *http.Client, opts *Options, l *log.Logger) (*Client, error) {
-	if l == nil {
-		l = log.New(os.Stdout, "[sankaku]", log.Ltime)
-	}
-
 	return &Client{
 		c:    c,
 		opts: opts,
@@ -43,13 +37,19 @@ func NewClient(c *http.Client, opts *Options, l *log.Logger) (*Client, error) {
 const (
 	userAgent         = "Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 Safari/537.73"
 	sessionCookieName = "_sankakucomplex_session"
-	staticImageHost = "https://cs.sankakucomplex.com"
+	staticImageHost   = "https://cs.sankakucomplex.com"
 )
+
+func (c *Client) logF(format string, a ...interface{}) {
+	if c.log != nil {
+		c.log.Printf(format, a)
+	}
+}
 
 func (c *Client) newRequest(ctx context.Context, method, spath string, body io.Reader) (*http.Request, error) {
 	spath = strings.TrimLeft(spath, "/")
 	u := fmt.Sprintf("%s/%s/%s", c.opts.Host, c.opts.Lang, spath)
-	c.log.Printf("start new request: %s", u)
+	c.logF("start new request: %s", u)
 
 	req, err := http.NewRequest(method, u, body)
 	if err != nil {
@@ -80,10 +80,10 @@ func (c *Client) getGoQueryDoc(ctx context.Context, spath string) (*goquery.Docu
 	return goquery.NewDocumentFromResponse(res)
 }
 
-type Post struct {
-	ID           string
-	Tags         []string
-	ThumbnailURL string
+type PostInfo struct {
+	ID           string   `json:"id"`
+	Tags         []string `json:"tags"`
+	ThumbnailURL string   `json:"thumbnail_url"`
 }
 
 func (c *Client) SearchPosts(ctx context.Context, keyword string, page int) ([]Post, error) {
@@ -104,12 +104,15 @@ func (c *Client) SearchPosts(ctx context.Context, keyword string, page int) ([]P
 	return posts, nil
 }
 
-type PostDetail struct {
-	ID          string
-	Hash        string
-	ResizedURL  string
-	OriginalURL string
-	SourceURL   string
+type Post struct {
+	ID           string   `json:"id"`
+	URL          string   `json:"url"`
+	Tags         []string `json:"tags"`
+	ThumbnailURL string   `json:"thumbnail_url"`
+	Hash         string   `json:"hash"`
+	ResizedURL   string   `json:"resized_url"`
+	OriginalURL  string   `json:"original_url"`
+	SourceURL    string   `json:"source_url"`
 }
 
 func getFullURL(s string) string {
@@ -119,44 +122,51 @@ func getFullURL(s string) string {
 	return s
 }
 
-func getThumbnailURL(postHash string) (string) {
+func getThumbnailURL(postHash string) string {
 	return fmt.Sprintf("%s/data/preview/%s/%s/%s.jpg", staticImageHost, postHash[0:2], postHash[2:4], postHash)
 }
 
-func (c *Client) GetPostWithDetail(ctx context.Context, postID string) (*Post, *PostDetail, error) {
-	spath := fmt.Sprintf("/post/show/%s", postID)
-	doc, err := c.getGoQueryDoc(ctx, spath)
+func (c *Client) getPostPath(postID string) string {
+	return fmt.Sprintf("/post/show/%s", postID)
+}
+
+func (c *Client) getPostURL(postID string) string {
+	return fmt.Sprintf("%s/%s/%s", c.opts.Host, c.opts.Lang, c.getPostPath(postID))
+}
+
+func (c *Client) GetPost(ctx context.Context, postID string) (*Post, error) {
+	spath := c.getPostPath(postID)
+	gq, err := c.getGoQueryDoc(ctx, spath)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// TODO: error handling
-	detail := &PostDetail{ID: postID}
-	doc.Find("#stats li").Each(func(i int, s *goquery.Selection) {
+	post := &Post{ID: postID, URL: c.getPostURL(postID)}
+	gq.Find("#stats li").Each(func(i int, s *goquery.Selection) {
 		if strings.HasPrefix(s.Text(), "Resized") {
-			detail.ResizedURL = getFullURL(s.Find("a").AttrOr("href", ""))
+			post.ResizedURL = getFullURL(s.Find("a").AttrOr("href", ""))
 		} else if strings.HasPrefix(s.Text(), "Original") {
-			detail.OriginalURL = getFullURL(s.Find("a").AttrOr("href", ""))
+			post.OriginalURL = getFullURL(s.Find("a").AttrOr("href", ""))
 		} else if strings.HasPrefix(s.Text(), "Source") {
-			detail.SourceURL = getFullURL(s.Find("a").AttrOr("href", ""))
+			post.SourceURL = getFullURL(s.Find("a").AttrOr("href", ""))
 		}
 	})
 	// もうちょっといいとり方ないものか
-	if detail.OriginalURL == "" {
-		return nil, nil, fmt.Errorf("failed to get post OriginalURL (postID: %s)", postID)
+	if post.OriginalURL == "" {
+		return nil, fmt.Errorf("failed to get post OriginalURL (postID: %s)", postID)
 	}
-	detail.Hash = strings.Split(path.Base(detail.OriginalURL), ".")[0]
+	post.Hash = strings.Split(path.Base(post.OriginalURL), ".")[0]
 
-	post := &Post{ID: postID}
-	doc.Find("#tag-sidebar li > a").Each(func(i int, s *goquery.Selection) {
+	gq.Find("#tag-sidebar li > a").Each(func(i int, s *goquery.Selection) {
 		tag := strings.Replace(s.Text(), " ", "_", -1)
 		if tag != "" {
 			post.Tags = append(post.Tags, tag)
 		}
 	})
-	if detail.Hash != "" {
-		post.ThumbnailURL = getThumbnailURL(detail.Hash)
+	if post.Hash != "" {
+		post.ThumbnailURL = getThumbnailURL(post.Hash)
 	}
 
-	return post, detail, nil
+	return post, nil
 }

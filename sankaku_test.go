@@ -15,7 +15,7 @@ func newTestClient() (*Client, error) {
 	return NewClient(hc, opts, nil)
 }
 
-func TestRequest(t *testing.T) {
+func TestSearchPosts(t *testing.T) {
 	c, err := newTestClient()
 	if err != nil {
 		t.Error(err)
@@ -31,7 +31,7 @@ func TestRequest(t *testing.T) {
 	}
 }
 
-func TestGetPostWithDetail(t *testing.T) {
+func TestGetPost(t *testing.T) {
 	c, err := newTestClient()
 	if err != nil {
 		t.Error(err)
@@ -40,10 +40,9 @@ func TestGetPostWithDetail(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	post, detail, err := c.GetPostWithDetail(ctx, "6397602")
+	post, err := c.GetPost(ctx, "6397602")
 	if err != nil {
 		t.Error(err)
 	}
 	t.Logf("%v", post)
-	t.Logf("%v", detail)
 }
