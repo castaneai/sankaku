@@ -76,6 +76,9 @@ func (c *Client) getGoQueryDoc(ctx context.Context, spath string) (*goquery.Docu
 	if err != nil {
 		return nil, err
 	}
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("[sankaku] %s", res.Status)
+	}
 
 	return goquery.NewDocumentFromResponse(res)
 }
