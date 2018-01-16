@@ -131,7 +131,7 @@ func (c *Client) getPostPath(postID string) string {
 }
 
 func (c *Client) getPostURL(postID string) string {
-	return fmt.Sprintf("%s/%s/%s", c.opts.Host, c.opts.Lang, c.getPostPath(postID))
+	return fmt.Sprintf("%s/%s%s", c.opts.Host, c.opts.Lang, c.getPostPath(postID))
 }
 
 func (c *Client) GetPost(ctx context.Context, postID string) (*Post, error) {
