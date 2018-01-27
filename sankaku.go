@@ -21,7 +21,7 @@ type Client struct {
 
 type Options struct {
 	Host      string
-	Lang      string
+	Lang      string // "en" or "ja"
 	SessionID string
 }
 
@@ -76,6 +76,7 @@ func (c *Client) getGoQueryDoc(ctx context.Context, spath string) (*goquery.Docu
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("[sankaku] %s", res.Status)
 	}
@@ -111,14 +112,22 @@ func (c *Client) SearchPostInfos(ctx context.Context, keyword string, page int) 
 }
 
 type Post struct {
-	ID           string   `json:"id"`
-	Tags         []string `json:"tags"`
-	ThumbnailURL string   `json:"thumbnail_url"`
-	URL          string   `json:"url"`
-	Hash         string   `json:"hash"`
-	ResizedURL   string   `json:"resized_url"`
-	OriginalURL  string   `json:"original_url"`
-	SourceURL    string   `json:"source_url"`
+	ID           string      `json:"id"`
+	Tags         []string    `json:"tags"`
+	ThumbnailURL string      `json:"thumbnail_url"`
+	URL          string      `json:"url"`
+	Content      PostContent `json:"content"`
+	Source       PostSource  `json:"source"`
+}
+
+type PostContent struct {
+	Hash string `json:"hash"`
+	URL  string `json:"url"`
+}
+
+type PostSource struct {
+	Title string
+	URL   string
 }
 
 func getFullURL(s string) string {
@@ -140,6 +149,19 @@ func (c *Client) getPostURL(postID string) string {
 	return fmt.Sprintf("%s/%s%s", c.opts.Host, c.opts.Lang, c.getPostPath(postID))
 }
 
+func (c *Client) getSourceLabelPrefix() string {
+	switch c.opts.Lang {
+	case "ja":
+		return "ソース:"
+	default:
+		return "Source:"
+	}
+}
+
+func getPostContentHash(contentURL string) string {
+	return strings.Split(path.Base(contentURL), ".")[0]
+}
+
 func (c *Client) GetPost(ctx context.Context, postID string) (*Post, error) {
 	spath := c.getPostPath(postID)
 	gq, err := c.getGoQueryDoc(ctx, spath)
@@ -150,29 +172,43 @@ func (c *Client) GetPost(ctx context.Context, postID string) (*Post, error) {
 	// TODO: error handling
 	post := &Post{ID: postID, URL: c.getPostURL(postID)}
 	gq.Find("#stats li").Each(func(i int, s *goquery.Selection) {
-		if strings.HasPrefix(s.Text(), "Resized") {
-			post.ResizedURL = getFullURL(s.Find("a").AttrOr("href", ""))
-		} else if strings.HasPrefix(s.Text(), "Original") {
-			post.OriginalURL = getFullURL(s.Find("a").AttrOr("href", ""))
-		} else if strings.HasPrefix(s.Text(), "Source") {
-			post.SourceURL = getFullURL(s.Find("a").AttrOr("href", ""))
+		// get source
+		if strings.HasPrefix(s.Text(), c.getSourceLabelPrefix()) {
+			source := PostSource{}
+			innerLink := s.Find("a")
+			if innerLink != nil {
+				source.Title = innerLink.Text()
+				source.URL = innerLink.AttrOr("href", "")
+			} else {
+				source.Title = s.Text()
+			}
+			post.Source = source
+		} else {
+			// get content
+			innerLink := s.Find("a")
+			if innerLink != nil {
+				linkId := innerLink.AttrOr("id", "")
+				if linkId == "highres" {
+					url := getFullURL(innerLink.AttrOr("href", ""))
+					hash := getPostContentHash(url)
+					post.Content = PostContent{URL: url, Hash: hash}
+				}
+			}
 		}
 	})
-	// もうちょっといいとり方ないものか
-	if post.OriginalURL == "" {
-		return nil, fmt.Errorf("failed to get post OriginalURL (postID: %s)", postID)
+	// post content must be parsed
+	if post.Content.URL == "" || post.Content.Hash == "" {
+		return nil, fmt.Errorf("could not parse post content (postID: %s)", postID)
 	}
-	post.Hash = strings.Split(path.Base(post.OriginalURL), ".")[0]
+	post.ThumbnailURL = getThumbnailURL(post.Content.Hash)
 
+	// parse tags
 	gq.Find("#tag-sidebar li > a").Each(func(i int, s *goquery.Selection) {
 		tag := strings.Replace(s.Text(), " ", "_", -1)
 		if tag != "" {
 			post.Tags = append(post.Tags, tag)
 		}
 	})
-	if post.Hash != "" {
-		post.ThumbnailURL = getThumbnailURL(post.Hash)
-	}
 
 	return post, nil
 }
