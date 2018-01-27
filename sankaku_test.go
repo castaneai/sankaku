@@ -2,10 +2,10 @@ package sankaku
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"testing"
 	"time"
-	"net/http"
 )
 
 func newTestClient() (*Client, error) {
@@ -22,7 +22,7 @@ func TestSearchPosts(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	posts, err := c.SearchPosts(ctx, "rating:s", 1)
+	posts, err := c.SearchPostInfos(ctx, "rating:s", 1)
 	if err != nil {
 		t.Error(err)
 	}

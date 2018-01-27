@@ -87,31 +87,34 @@ type PostInfo struct {
 	ID           string   `json:"id"`
 	Tags         []string `json:"tags"`
 	ThumbnailURL string   `json:"thumbnail_url"`
+	URL          string   `json:"url"`
 }
 
-func (c *Client) SearchPosts(ctx context.Context, keyword string, page int) ([]Post, error) {
+func (c *Client) SearchPostInfos(ctx context.Context, keyword string, page int) ([]*PostInfo, error) {
 	spath := fmt.Sprintf("/post/index.content?tags=%s&page=%d", url.QueryEscape(keyword), page)
 	doc, err := c.getGoQueryDoc(ctx, spath)
 	if err != nil {
 		return nil, err
 	}
 
-	var posts []Post
+	var pis []*PostInfo
 	doc.Find(".thumb").Each(func(i int, s *goquery.Selection) {
-		posts = append(posts, Post{
+		pi := &PostInfo{
 			ID:           strings.TrimLeft(s.AttrOr("id", ""), "p"),
 			Tags:         strings.Split(s.Find(".preview").AttrOr("title", ""), " "),
 			ThumbnailURL: getFullURL(s.Find(".preview").AttrOr("src", "")),
-		})
+		}
+		pi.URL = c.getPostURL(pi.ID)
+		pis = append(pis, pi)
 	})
-	return posts, nil
+	return pis, nil
 }
 
 type Post struct {
 	ID           string   `json:"id"`
-	URL          string   `json:"url"`
 	Tags         []string `json:"tags"`
 	ThumbnailURL string   `json:"thumbnail_url"`
+	URL          string   `json:"url"`
 	Hash         string   `json:"hash"`
 	ResizedURL   string   `json:"resized_url"`
 	OriginalURL  string   `json:"original_url"`
