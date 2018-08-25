@@ -9,48 +9,31 @@ import (
 )
 
 const (
-	Timeout = 60 * time.Second
+	apiBaseURL     = "https://capi-beta.sankakucomplex.com"
+	defaultTimeout = 60 * time.Second
 )
 
-func newTestClient(lang string) (*Client, error) {
+func newTestClient() (*Client, error) {
 	sessionID := os.Getenv("SANKAKU_SESSION")
-	opts := &Options{Host: "https://chan.sankakucomplex.com", Lang: lang, SessionID: sessionID}
+	opts := &Options{APIBaseURL: apiBaseURL, SessionID: sessionID}
 	hc := &http.Client{}
 	return NewClient(hc, opts, nil)
 }
 
 func TestSearchPosts(t *testing.T) {
-	for _, lang := range []string{"en", "ja"} {
-		c, err := newTestClient(lang)
-		if err != nil {
-			t.Error(err)
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), Timeout)
-		defer cancel()
-		posts, err := c.SearchPostInfos(ctx, "rating:s", 1)
-		if err != nil {
-			t.Error(err)
-		}
-		for _, p := range posts {
-			t.Logf("%s: %+v", p.ID, p.Tags)
-		}
+	c, err := newTestClient()
+	if err != nil {
+		t.Fatal(err)
 	}
-}
 
-func TestGetPost(t *testing.T) {
-	for _, lang := range []string{"en", "ja"} {
-		c, err := newTestClient(lang)
-		if err != nil {
-			t.Error(err)
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
 
-		ctx, cancel := context.WithTimeout(context.Background(), Timeout)
-		defer cancel()
-
-		post, err := c.GetPost(ctx, "6397602")
-		if err != nil {
-			t.Error(err)
-		}
-		t.Logf("%+v", post)
+	posts, err := c.SearchPost(ctx, "rating:s", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range posts {
+		t.Logf("%+v", p)
 	}
 }
