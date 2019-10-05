@@ -9,15 +9,17 @@ import (
 )
 
 const (
-	apiBaseURL     = "https://capi-beta.sankakucomplex.com"
 	defaultTimeout = 60 * time.Second
 )
 
 func newTestClient() (*Client, error) {
-	sessionID := os.Getenv("SANKAKU_SESSION")
-	opts := &Options{APIBaseURL: apiBaseURL, SessionID: sessionID}
-	hc := &http.Client{}
-	return NewClient(hc, opts, nil)
+	var opts []ClientOption
+	token := os.Getenv("SANKAKU_TOKEN")
+	if token != "" {
+		opts = append(opts, WithAuthentication(token))
+	}
+	hc := http.DefaultClient
+	return NewClient(hc, opts...)
 }
 
 func TestSearchPosts(t *testing.T) {

@@ -5,72 +5,96 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"io/ioutil"
 	"net/http"
 	"net/url"
-	"time"
 )
 
 type Client struct {
-	c    *http.Client
-	opts *Options
-	log  *log.Logger
+	hc   *http.Client
+	opts []ClientOption
 }
 
-type Options struct {
-	APIBaseURL string
-	SessionID  string
+type ClientOption interface {
+	Apply(c *Client) error
+}
+
+type authOpt struct {
+	token string
+}
+
+type authTransport struct {
+	base  http.RoundTripper
+	token string
+}
+
+func (a *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set("authorization", "Bearer "+a.token)
+	return a.base.RoundTrip(req)
+}
+
+func (a *authOpt) Apply(c *Client) error {
+	c.hc.Transport = &authTransport{base: c.hc.Transport, token: a.token}
+	return nil
+}
+
+func WithAuthentication(token string) ClientOption {
+	return &authOpt{token: token}
 }
 
 // NewClient creates new client for sankaku
-func NewClient(c *http.Client, opts *Options, l *log.Logger) (*Client, error) {
+func NewClient(c *http.Client, opts ...ClientOption) (*Client, error) {
 	return &Client{
-		c:    c,
+		hc:   c,
 		opts: opts,
-		log:  l,
 	}, nil
 }
 
 const (
-	userAgent         = "Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 Safari/537.73"
-	sessionCookieName = "_sankakucomplex_session"
-	searchLimit       = 100
+	apiBaseURL  = "https://capi-v2.sankakucomplex.com"
+	userAgent   = "Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 Safari/537.73"
+	searchLimit = 100
 )
 
-func (c *Client) logF(format string, a ...interface{}) {
-	if c.log != nil {
-		c.log.Printf(format, a)
-	}
-}
-
-func newCookie(name, value string) *http.Cookie {
-	expires := time.Now().AddDate(1, 0, 0)
-	return &http.Cookie{Name: name, Value: value, Expires: expires, HttpOnly: true}
-}
-
 func (c *Client) newRequest(ctx context.Context, method, spath string, body io.Reader) (*http.Request, error) {
-	u := fmt.Sprintf("%s%s", c.opts.APIBaseURL, spath)
-
-	req, err := http.NewRequest(method, u, body)
+	req, err := http.NewRequest(method, apiBaseURL+spath, body)
 	if err != nil {
 		return nil, err
 	}
-
 	req = req.WithContext(ctx)
-	req.Header.Set("User-Agent", userAgent)
-	req.AddCookie(newCookie(sessionCookieName, c.opts.SessionID))
-
+	req.Header.Set("user-agent", userAgent)
 	return req, nil
 }
+
+type Rating string
+
+func (r Rating) String() string {
+	switch r {
+	case RatingSafe:
+		return "safe"
+	case RatingQuestionable:
+		return "questionable"
+	case RatingExplicit:
+		return "explicit"
+	default:
+		return "unknown"
+	}
+}
+
+const (
+	RatingSafe         Rating = "s"
+	RatingQuestionable Rating = "q"
+	RatingExplicit     Rating = "e"
+)
 
 type Post struct {
 	ID         int    `json:"id"`
 	MD5        string `json:"md5"`
-	Rating     string `json:"rating"`
+	Rating     Rating `json:"rating"`
 	FileURL    string `json:"file_url"`
 	PreviewURL string `json:"preview_url"`
 	Source     string `json:"source"`
-	Tags       []*Tag `json:"tags"`
+	Tags       []Tag  `json:"tags"`
 }
 
 type Tag struct {
@@ -82,20 +106,36 @@ type Tag struct {
 }
 
 func (c *Client) getJSON(req *http.Request, dest interface{}) error {
-	resp, err := c.c.Do(req)
+	resp, err := c.hc.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		errBody, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("http error: %v (body: unknown)", resp.Status)
+		}
+		return fmt.Errorf("http error: %v, %s", resp.Status, string(errBody))
+	}
 
 	dec := json.NewDecoder(resp.Body)
 	return dec.Decode(dest)
 }
 
 func (c *Client) SearchPost(ctx context.Context, keyword string, page int) ([]*Post, error) {
-	spath := fmt.Sprintf("/post/index.json?page=%d&limit=%d&tags=%s", page, searchLimit, url.QueryEscape(keyword))
+	spath := "/posts"
+	params := make(url.Values)
+	params.Set("page", fmt.Sprintf("%d", page))
+	params.Set("limit", fmt.Sprintf("%d", searchLimit))
+	params.Set("language", "english")
+	params.Set("tags", keyword)
+	if len(params) > 0 {
+		spath += "?" + params.Encode()
+	}
 
-	posts := make([]*Post, 0)
+	var posts []*Post
 	req, err := c.newRequest(ctx, "GET", spath, nil)
 	if err != nil {
 		return nil, err
