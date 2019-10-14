@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"time"
 )
 
 type Client struct {
@@ -87,14 +88,31 @@ const (
 	RatingExplicit     Rating = "e"
 )
 
+type sankakuTime struct {
+	time.Time
+}
+
+func (st *sankakuTime) UnmarshalJSON(data []byte) error {
+	var rt struct {
+		S int64 `json:"s"`
+		N int64 `json:"n"`
+	}
+	if err := json.Unmarshal(data, &rt); err != nil {
+		return err
+	}
+	*st = sankakuTime{time.Unix(rt.S, rt.N)}
+	return nil
+}
+
 type Post struct {
-	ID         int    `json:"id"`
-	MD5        string `json:"md5"`
-	Rating     Rating `json:"rating"`
-	FileURL    string `json:"file_url"`
-	PreviewURL string `json:"preview_url"`
-	Source     string `json:"source"`
-	Tags       []Tag  `json:"tags"`
+	ID         int         `json:"id"`
+	MD5        string      `json:"md5"`
+	Rating     Rating      `json:"rating"`
+	FileURL    string      `json:"file_url"`
+	PreviewURL string      `json:"preview_url"`
+	Source     string      `json:"source"`
+	Tags       []Tag       `json:"tags"`
+	CreatedAt  sankakuTime `json:"created_at"`
 }
 
 type Tag struct {
